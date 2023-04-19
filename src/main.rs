@@ -1,38 +1,35 @@
+use phf::phf_map;
 use std::env;
 use tiny_http::{Header, Response, Server, StatusCode};
 
-fn get_query_url(engine: &str) -> Option<&str> {
-    match engine {
-        "rust" => Some("https://doc.rust-lang.org/std/?search={}"),
-        "docsrs" => Some("https://docs.rs/releases/search?query={}"),
-        "cargo" => Some("https://crates.io/search?q={}"),
-        "w" => Some("https://en.wikipedia.org/wiki/Special:Search?go=Go&search={}&ns0=1"),
-        "wr" => Some("https://ru.wikipedia.org/w/index.php?search={}&ns0=1"),
-        "aw" => Some("https://wiki.archlinux.org/index.php?search={}"),
-        "aur" => Some("https://aur.archlinux.org/packages?K={}"),
-        _ => None,
-    }
+static SHORTCUTS: phf::Map<&'static str, &'static str> = phf_map! {
+    "!rust" => "https://doc.rust-lang.org/std/?search=%s",
+    "!docsrs" => "https://docs.rs/releases/search?query=%s",
+    "!cargo" => "https://crates.io/search?q=%s",
+    "!w" => "https://en.wikipedia.org/wiki/Special:Search?go=Go&search=%s&ns0=1",
+    "!wr" => "https://ru.wikipedia.org/w/index.php?search=%s&ns0=1",
+    "!aw" => "https://wiki.archlinux.org/index.php?search=%s",
+    "!aur" => "https://aur.archlinux.org/packages?K=%s",
+};
+static DEFAULT_SEARCH_URL: &str = "https://duckduckgo.com/?q=%s";
+
+fn get_redirect_location(full_query: &str) -> String {
+    let (url, query) = match full_query.split_once('+') {
+        Some((prefix, query)) if SHORTCUTS.contains_key(prefix) => (SHORTCUTS[prefix], query),
+        _ => (DEFAULT_SEARCH_URL, full_query),
+    };
+
+    url.replace("%s", query)
 }
 
-fn get_redirect_location(url: &str) -> Option<String> {
-    let (engine, query) = url[1..].split_once("%20")?;
-    let query_url = get_query_url(engine)?;
-
-    Some(query_url.replace("{}", query))
-}
-
-fn get_response(url: &str) -> Response<std::io::Empty> {
+fn get_redirect(url: &str) -> Response<std::io::Empty> {
     let location = get_redirect_location(url);
 
-    if let Some(loc) = location {
-        let mut resp = Response::empty(StatusCode(301));
-        let loc_header = Header::from_bytes(&b"Location"[..], &loc[..]).unwrap();
-        resp.add_header(loc_header);
+    let mut resp = Response::empty(StatusCode(302));
+    let loc_header = Header::from_bytes(&b"Location"[..], &location[..]).unwrap();
+    resp.add_header(loc_header);
 
-        resp
-    } else {
-        Response::empty(StatusCode(404))
-    }
+    resp
 }
 
 fn main() -> ! {
@@ -43,7 +40,7 @@ fn main() -> ! {
         address = addr
     };
 
-    let server = Server::http(address).unwrap_or_else(|addr| panic!("Invalid address: {addr}"));
+    let server = Server::http(address).unwrap();
 
     loop {
         let request = match server.recv() {
@@ -53,8 +50,13 @@ fn main() -> ! {
                 continue;
             }
         };
-        let url = request.url().to_owned();
 
-        request.respond(get_response(&url)).unwrap();
+        let response = if let Some(query) = request.url().strip_prefix("/?q=") {
+            get_redirect(query)
+        } else {
+            Response::empty(StatusCode(400))
+        };
+
+        request.respond(response).unwrap();
     }
 }

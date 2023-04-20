@@ -2,6 +2,11 @@ use phf::phf_map;
 use std::env;
 use tiny_http::{Header, Response, Server, StatusCode};
 
+static COMMANDS: phf::Map<&'static str, &'static str> = phf_map! {
+    "!yt" => "https://www.youtube.com/",
+    "!gh" => "https://github.com/",
+};
+
 static SHORTCUTS: phf::Map<&'static str, &'static str> = phf_map! {
     "!rust" => "https://doc.rust-lang.org/std/?search=%s",
     "!docsrs" => "https://docs.rs/releases/search?query=%s",
@@ -10,23 +15,24 @@ static SHORTCUTS: phf::Map<&'static str, &'static str> = phf_map! {
     "!wr" => "https://ru.wikipedia.org/w/index.php?search=%s&ns0=1",
     "!aw" => "https://wiki.archlinux.org/index.php?search=%s",
     "!aur" => "https://aur.archlinux.org/packages?K=%s",
+    "!yt" => "https://www.youtube.com/results?search_query=%s",
+    "!gh" => "https://github.com/search?q=%s",
 };
 static DEFAULT_SEARCH_URL: &str = "https://duckduckgo.com/?q=%s";
 
 fn get_redirect_location(full_query: &str) -> String {
-    let (url, query) = match full_query.split_once('+') {
-        Some((prefix, query)) if SHORTCUTS.contains_key(prefix) => (SHORTCUTS[prefix], query),
-        _ => (DEFAULT_SEARCH_URL, full_query),
-    };
-
-    url.replace("%s", query)
+    match full_query.split_once('+') {
+        Some((prefix, query)) if SHORTCUTS.contains_key(prefix) => SHORTCUTS[prefix].replace("%s", query),
+        None if COMMANDS.contains_key(full_query) => COMMANDS[full_query].to_string(),
+        _ => DEFAULT_SEARCH_URL.replace("%s", full_query),
+    }
 }
 
 fn get_redirect(url: &str) -> Response<std::io::Empty> {
     let location = get_redirect_location(url);
 
     let mut resp = Response::empty(StatusCode(302));
-    let loc_header = Header::from_bytes(&b"Location"[..], &location[..]).unwrap();
+    let loc_header = Header::from_bytes(&b"Location"[..], location.as_bytes()).unwrap();
     resp.add_header(loc_header);
 
     resp

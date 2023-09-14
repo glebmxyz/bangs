@@ -2,30 +2,47 @@ use phf::phf_map;
 use std::env;
 use tiny_http::{Header, Response, Server, StatusCode};
 
-static COMMANDS: phf::Map<&'static str, &'static str> = phf_map! {
-    "!yt" => "https://www.youtube.com/",
-    "!gh" => "https://github.com/",
+struct ShortcutURLs(Option<&'static str>, Option<&'static str>);
+
+static SHORTCUTS: phf::Map<&'static str, ShortcutURLs> = phf_map! {
+    "!rust" => ShortcutURLs(None, Some("https://doc.rust-lang.org/std/?search=%s")),
+    "!docsrs" => ShortcutURLs(None, Some("https://docs.rs/releases/search?query=%s")),
+    "!cargo" => ShortcutURLs(None, Some("https://crates.io/search?q=%s")),
+    "!w" => ShortcutURLs(None, Some("https://en.wikipedia.org/wiki/Special:Search?go=Go&search=%s&ns0=1")),
+    "!wr" => ShortcutURLs(None, Some("https://ru.wikipedia.org/w/index.php?search=%s&ns0=1")),
+    "!aw" => ShortcutURLs(None, Some("https://wiki.archlinux.org/index.php?search=%s")),
+    "!aur" => ShortcutURLs(None, Some("https://aur.archlinux.org/packages?K=%s")),
+    "!yt" => ShortcutURLs(Some("https://youtube.com/"), Some("https://www.youtube.com/results?search_query=%s")),
+    "!gh" => ShortcutURLs(Some("https://github.com/"), Some("https://github.com/search?q=%s")),
 };
 
-static SHORTCUTS: phf::Map<&'static str, &'static str> = phf_map! {
-    "!rust" => "https://doc.rust-lang.org/std/?search=%s",
-    "!docsrs" => "https://docs.rs/releases/search?query=%s",
-    "!cargo" => "https://crates.io/search?q=%s",
-    "!w" => "https://en.wikipedia.org/wiki/Special:Search?go=Go&search=%s&ns0=1",
-    "!wr" => "https://ru.wikipedia.org/w/index.php?search=%s&ns0=1",
-    "!aw" => "https://wiki.archlinux.org/index.php?search=%s",
-    "!aur" => "https://aur.archlinux.org/packages?K=%s",
-    "!yt" => "https://www.youtube.com/results?search_query=%s",
-    "!gh" => "https://github.com/search?q=%s",
-};
 static DEFAULT_SEARCH_URL: &str = "https://duckduckgo.com/?q=%s";
 
 fn get_redirect_location(full_query: &str) -> String {
-    match full_query.split_once('+') {
-        Some((prefix, query)) if SHORTCUTS.contains_key(prefix) => SHORTCUTS[prefix].replace("%s", query),
-        None if COMMANDS.contains_key(full_query) => COMMANDS[full_query].to_string(),
-        _ => DEFAULT_SEARCH_URL.replace("%s", full_query),
+    let mut words: Vec<&str> = full_query.split('+').collect();
+    let mut shortcut = None;
+
+    for (i, word) in words.iter().enumerate() {
+        let val = SHORTCUTS.get(*word);
+        if let Some(urls) = val {
+            shortcut = Some((i, urls));
+            break;
+        }
     }
+
+    if let Some((idx, urls)) = shortcut {
+        if words.len() > 1 {
+            if let Some(search_url) = urls.1 {
+                words.remove(idx);
+                let query = words.join("+");
+                return search_url.replace("%s", &query);
+            }
+        } else if let Some(site_url) = urls.0 {
+            return site_url.to_string();
+        }
+    };
+
+    DEFAULT_SEARCH_URL.replace("%s", full_query)
 }
 
 fn get_redirect(url: &str) -> Response<std::io::Empty> {

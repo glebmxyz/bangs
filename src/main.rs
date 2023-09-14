@@ -8,12 +8,16 @@ static SHORTCUTS: phf::Map<&'static str, ShortcutURLs> = phf_map! {
     "!rust" => ShortcutURLs(None, Some("https://doc.rust-lang.org/std/?search=%s")),
     "!docsrs" => ShortcutURLs(None, Some("https://docs.rs/releases/search?query=%s")),
     "!cargo" => ShortcutURLs(None, Some("https://crates.io/search?q=%s")),
-    "!w" => ShortcutURLs(None, Some("https://en.wikipedia.org/wiki/Special:Search?go=Go&search=%s&ns0=1")),
-    "!wr" => ShortcutURLs(None, Some("https://ru.wikipedia.org/w/index.php?search=%s&ns0=1")),
-    "!aw" => ShortcutURLs(None, Some("https://wiki.archlinux.org/index.php?search=%s")),
+    "!w" => ShortcutURLs(Some("https://en.wikipedia.org/"), Some("https://en.wikipedia.org/wiki/Special:Search?go=Go&search=%s&ns0=1")),
+    "!wr" => ShortcutURLs(Some("https://ru.wikipedia.org/"), Some("https://ru.wikipedia.org/w/index.php?search=%s&ns0=1")),
+    "!aw" => ShortcutURLs(Some("https://wiki.archlinux.org/"), Some("https://wiki.archlinux.org/index.php?search=%s")),
     "!aur" => ShortcutURLs(None, Some("https://aur.archlinux.org/packages?K=%s")),
     "!yt" => ShortcutURLs(Some("https://youtube.com/"), Some("https://www.youtube.com/results?search_query=%s")),
     "!gh" => ShortcutURLs(Some("https://github.com/"), Some("https://github.com/search?q=%s")),
+    "!g" => ShortcutURLs(Some("https://google.com/"), Some("https://google.com/search?q=%s")),
+    "!ya" => ShortcutURLs(Some("https://ya.ru/"), Some("https://yandex.ru/search/?text=%s")),
+    "!rc" => ShortcutURLs(None, Some("https://context.reverso.net/translation/english-russian/%s")),
+    "!py" => ShortcutURLs(None, Some("https://docs.python.org/3/search.html?q=%s")),
 };
 
 static DEFAULT_SEARCH_URL: &str = "https://duckduckgo.com/?q=%s";
@@ -49,7 +53,7 @@ fn get_redirect(url: &str) -> Response<std::io::Empty> {
     let location = get_redirect_location(url);
 
     let mut resp = Response::empty(StatusCode(302));
-    let loc_header = Header::from_bytes(&b"Location"[..], location.as_bytes()).unwrap();
+    let loc_header = Header::from_bytes(&b"Location"[..], &location[..]).unwrap();
     resp.add_header(loc_header);
 
     resp
